@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+ai_news.db
+ai_news_bot.log
+launchd_out.log
+launchd_err.log
+.DS_Store
+hi
