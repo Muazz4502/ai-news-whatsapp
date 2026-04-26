@@ -1,60 +1,83 @@
 # ai-news-whatsapp
 
-Wakes up every morning, reads the AI internet so you don't have to,
-picks the bits worth your attention, and pushes them to your WhatsApp.
+> Wakes up at 8 AM, reads the AI internet, picks the 10 things worth
+> your morning coffee, pushes them to WhatsApp. Goes back to sleep.
 
-It's a bot that hates noise.
+I was drowning. Five tabs of AI news every morning. The "AI thing of
+the day" Slack channel had 200 unread. Twitter algorithmic, Hacker
+News chaotic, RSS overflowing, YouTube unwatched, Instagram somehow on
+the list.
 
-## What it does
+So I built the bot.
 
-1. **Scrapes** five places where AI news lives — Twitter/X, RSS feeds,
-   Hacker News, YouTube, Instagram.
-2. **Dedupes + ranks** the firehose into the top items worth reading.
-3. **Sends** the digest to your WhatsApp via Twilio.
-4. **Remembers** what it sent so it never spams you the same story twice.
+```
+07:59  scraping twitter…  hackernews…  rss…  youtube…  instagram…
+08:00  → ranking 487 candidates
+08:00  → top 10 selected
+08:00  → WhatsApp delivered ✓
+08:00  back to bed
+```
 
-## Why
+## The pipeline
 
-The "AI thing of the day" Slack channel was at 200 unread.
-Manually checking five feeds is a part-time job.
-A daily 10-bullet WhatsApp summary is enough.
+```
+scrapers/         pull raw firehose from 5 sources
+  twitter.py
+  hackernews.py
+  rss_feeds.py
+  youtube.py
+  instagram.py
+processor.py      dedupe near-dupes, LLM-rank by signal
+database.py       SQLite memory: "have I sent you this already?"
+notifier.py       format → Twilio → WhatsApp
+main.py           schedule + orchestrate
+```
+
+The interesting bit is `processor.py`. The LLM doesn't just summarize —
+it judges whether a tweet is news or noise, whether a paper is novel or
+a press release in disguise. The bar is "would you screenshot this and
+send it to a friend?"
 
 ## Stack
 
-Python · `tweepy`, `feedparser`, `requests`, `openai`, `twilio`, `schedule` ·
-SQLite for memory.
+Python · `tweepy` · `feedparser` · `openai` · `twilio` · `schedule` ·
+SQLite. No framework. One process. Runs anywhere.
 
-## Setup
+## Spinning it up
 
 ```bash
 cp .env.example .env
-# Fill in: TWITTER_BEARER_TOKEN, TWILIO_*, OPENAI_API_KEY, ...
+# Fill in: TWITTER_BEARER_TOKEN, TWILIO_*, OPENAI_API_KEY, …
 pip install -r requirements.txt
 python main.py
 ```
 
-The script schedules itself for `DAILY_SEND_TIME` (configure in `.env`)
-and keeps running. Run it on a tiny VPS, a Raspberry Pi, or just leave
-your laptop on.
+Set `DAILY_SEND_TIME` and `TOP_ITEMS_COUNT` in `.env`. Leave it running
+on a $5 VPS, a Pi, your old laptop in a drawer — anywhere with
+internet and 50MB of disk.
 
-## How it's wired
+## What I learned building it
 
-```
-scrapers/      → pull raw items from each source
-processor.py   → dedupe + rank (LLM-assisted)
-database.py    → SQLite, "have I sent this already?"
-notifier.py    → format + send WhatsApp via Twilio
-main.py        → schedule + orchestrate
-```
+- **Twitter v2 free tier hates you.** 1500 fetches/month. Burned through
+  it in a week. RSS does most of the heavy lifting now.
+- **Instagram parsing is a war you can't win.** The selectors break
+  every six weeks. I treat that scraper as "best effort."
+- **LLM ranking >>> rule-based ranking.** Tried keyword scoring, tried
+  recency × engagement, tried PageRank-style. None beat "ask GPT to
+  pick the 10 a smart person would care about."
+- **SQLite is enough.** The memory table is a thousand rows. Postgres
+  would be vanity.
 
-## Tuning
+## Things it doesn't do (yet)
 
-- Top N per day: `TOP_ITEMS_COUNT` in `.env`
-- Send time (24h): `DAILY_SEND_TIME` in `.env`
-- Source mix: comment out scrapers in `main.run_daily_job()`
+- Personalization — every user gets the same 10. Should weight by what
+  I tap on.
+- Threading — long stories arrive as standalone tweets, no follow-up.
+- Search — "what did the bot send last Tuesday?" is just scrolling
+  WhatsApp.
 
-## Heads-up
+## Vibe
 
-- Twitter/X v2 free tier rate-limits hard. Expect dropped fetches.
-- Instagram scraping is fragile; expect to fix the parser quarterly.
-- Twilio WhatsApp sandbox needs you to text a join code first.
+Small, sharp, single-purpose. The kind of side project you forget you
+have until your phone buzzes at 8 AM and you remember: oh right,
+I built that.
